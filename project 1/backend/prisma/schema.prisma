@@ -1,0 +1,165 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  name         String
+  role         String        // "SUPERADMIN", "ADMIN", "FACULTY", "STUDENT"
+  avatarUrl    String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  
+  studentProfile StudentProfile?
+  facultyProfile FacultyProfile?
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+}
+
+model Department {
+  id        String    @id @default(uuid())
+  name      String
+  code      String    @unique
+  courses   Course[]
+  students  StudentProfile[]
+  faculties FacultyProfile[]
+}
+
+model Course {
+  id           String      @id @default(uuid())
+  name         String
+  code         String      @unique
+  departmentId String
+  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  subjects     Subject[]
+}
+
+model Subject {
+  id                String             @id @default(uuid())
+  name              String
+  code              String             @unique
+  credits           Int                @default(3)
+  courseId          String
+  course            Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  facultyId         String?
+  faculty           FacultyProfile?    @relation(fields: [facultyId], references: [id])
+  timetableEntries  Timetable[]
+  attendanceRecords AttendanceRecord[]
+}
+
+model StudentProfile {
+  id             String             @id @default(uuid())
+  userId         String             @unique
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rollNumber     String             @unique
+  departmentId   String
+  department     Department         @relation(fields: [departmentId], references: [id])
+  currentSemester Int                @default(1)
+  faceRegistered Boolean            @default(false)
+  faceEmbedding  String?            // JSON-stringified array of embedding float values
+  classId        String?
+  class          Class?             @relation(fields: [classId], references: [id])
+  attendance     AttendanceRecord[]
+  leaveRequests  LeaveRequest[]
+}
+
+model FacultyProfile {
+  id           String             @id @default(uuid())
+  userId       String             @unique
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId   String             @unique
+  departmentId String
+  department   Department         @relation(fields: [departmentId], references: [id])
+  designation  String
+  subjects     Subject[]
+  timetable    Timetable[]
+  approvedLeaves LeaveRequest[]    @relation("ApprovedLeaves")
+}
+
+model Class {
+  id           String           @id @default(uuid())
+  name         String           // e.g. "Computer Science - Section A"
+  departmentId String
+  semester     Int
+  students     StudentProfile[]
+  timetable    Timetable[]
+  attendance   AttendanceRecord[]
+}
+
+model Timetable {
+  id        String          @id @default(uuid())
+  classId   String
+  class     Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  facultyId String
+  faculty   FacultyProfile  @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  dayOfWeek Int             // 1 = Monday, 5 = Friday, etc.
+  startTime String          // e.g. "09:00"
+  endTime   String          // e.g. "10:00"
+  room      String
+}
+
+model AttendanceRecord {
+  id           String         @id @default(uuid())
+  date         String         // YYYY-MM-DD
+  dateTime     DateTime       @default(now())
+  status       String         // "PRESENT", "ABSENT", "LATE"
+  method       String         // "FACE", "MANUAL", "QR", "GPS"
+  studentId    String
+  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId    String
+  subject      Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  classId      String
+  class        Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  verifiedBy   String?        // User ID of teacher/admin who verified
+  latitude     Float?
+  longitude    Float?
+  confidence   Float?         // AI confidence score (for face recognition)
+}
+
+model LeaveRequest {
+  id           String         @id @default(uuid())
+  studentId    String
+  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  startDate    String         // YYYY-MM-DD
+  endDate      String         // YYYY-MM-DD
+  reason       String
+  status       String         // "PENDING", "APPROVED", "REJECTED"
+  approvedById String?
+  approvedBy   FacultyProfile? @relation("ApprovedLeaves", fields: [approvedById], references: [id])
+  createdAt    DateTime       @default(now())
+}
+
+model Holiday {
+  id   String @id @default(uuid())
+  name String
+  date String // YYYY-MM-DD
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   // e.g. "USER_LOGIN", "ATTENDANCE_MARKED"
+  details   String
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
